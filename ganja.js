@@ -40,6 +40,26 @@
   else context[name] = definition();
 }('Algebra', this, function () {
 
+// Keep WebGL's backing buffer separate from its CSS size. An unsized canvas
+// uses its buffer dimensions for layout, so multiplying them by DPR each frame
+// would also grow the next frame's CSS size. Preserve only dimensions affected
+// by that feedback; stylesheet and percentage sizes can still respond to layout.
+  function resizeWebGLCanvas(canvas,options) {
+    const style=getComputedStyle(canvas), width=parseFloat(style.width), height=parseFloat(style.height);
+    if (!(width>0 && height>0)) return;
+    const ratio=options.devicePixelRatio||devicePixelRatio||1;
+    const bufferWidth=Math.max(1,Math.round(width*ratio)), bufferHeight=Math.max(1,Math.round(height*ratio));
+    if (canvas.width===bufferWidth && canvas.height===bufferHeight) return;
+    // Auto height/width must retain the original aspect ratio even when a
+    // fractional DPR rounds the backing buffer to unequal pixel proportions.
+    if (style.aspectRatio==='auto') canvas.style.aspectRatio=canvas.width+' / '+canvas.height;
+    if (canvas.width!==bufferWidth) canvas.width=bufferWidth;
+    if (canvas.height!==bufferHeight) canvas.height=bufferHeight;
+    const resized=getComputedStyle(canvas), layoutWidth=parseFloat(resized.width), layoutHeight=parseFloat(resized.height);
+    if (Math.abs(layoutWidth-width)>0.5) canvas.style.width=width+'px';
+    if (Math.abs(layoutHeight-height)>0.5) canvas.style.height=height+'px';
+  }
+
 /** Some helpers for eigenvalues for bivector split in high-d spaces **/
   function QR(M) {
     // helpers
@@ -1031,7 +1051,7 @@
       static graphGL2(f,options) {
       // Create canvas, get webGL2 context.
         var canvas=document.createElement('canvas'); canvas.style.width=options.width||''; canvas.style.height=options.height||''; canvas.style.backgroundColor='#EEE';
-        if (options.width && options.width.match && options.width.match(/px/i)) canvas.width = parseFloat(options.width)*(options.devicePixelRatio||devicePixelRatio||1); if (options.height && options.height.match && options.height.match(/px/i)) canvas.height = parseFloat(options.height)*(options.devicePixelRatio||devicePixelRatio||1);
+        if (options.width && options.width.match && options.width.match(/px/i)) canvas.width = parseFloat(options.width); if (options.height && options.height.match && options.height.match(/px/i)) canvas.height = parseFloat(options.height);
         var gl=canvas.getContext('webgl2',{alpha:options.alpha||false,preserveDrawingBuffer:true,antialias:true,powerPreference:'high-performance'});
         var gl2=!!gl; if (!gl) gl=canvas.getContext('webgl',{alpha:options.alpha||false,preserveDrawingBuffer:true,antialias:true,powerPreference:'high-performance'});
         gl.clearColor(240/255,240/255,240/255,1.0); gl.enable(gl.DEPTH_TEST); if (!gl2) { gl.getExtension("EXT_frag_depth"); gl.va = gl.getExtension('OES_vertex_array_object'); }
@@ -1138,7 +1158,7 @@
         var armed=0;
         canvas.update = (x)=>{
         // Start by updating canvas size if needed and viewport.
-          var s = getComputedStyle(canvas); if (s.width) { canvas.width = parseFloat(s.width)*(options.devicePixelRatio||devicePixelRatio||1); canvas.height = parseFloat(s.height)*(options.devicePixelRatio||devicePixelRatio||1); }
+          resizeWebGLCanvas(canvas,options);
           gl.viewport(0,0, canvas.width|0,canvas.height|0); var r=canvas.width/canvas.height;
         // Defaults, resolve function input
           var a,p=[],l=[],t=[],c=[.5,.5,.5],alpha=0,lastpos=[-2,2,0.2]; gl.clear(gl.COLOR_BUFFER_BIT+gl.DEPTH_BUFFER_BIT); while (x.call) x=x();
@@ -1431,7 +1451,7 @@
         // restore from still..
           if (options && !options.still && canvas.im && canvas.im.parentElement) { canvas.im.parentElement.insertBefore(canvas,canvas.im); canvas.im.parentElement.removeChild(canvas.im); }
         // Start by updating canvas size if needed and viewport.
-          var s = getComputedStyle(canvas); if (s.width) { canvas.width = parseFloat(s.width)*(options.devicePixelRatio||devicePixelRatio||1); canvas.height = parseFloat(s.height)*(options.devicePixelRatio||devicePixelRatio||1); }
+          resizeWebGLCanvas(canvas,options);
           gl.viewport(0,0, canvas.width|0,canvas.height|0); var r=canvas.width/canvas.height;
         // Defaults, resolve function input
           var a,p=[],l=[],t=[],c=[.5,.5,.5],alpha=0,lastpos=[-1.95,1.5,0,1]; gl.clear(gl.COLOR_BUFFER_BIT+gl.DEPTH_BUFFER_BIT); while (x.call) x=x();

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>WebGL canvas sizing regression checks</title>
+  <script src="../ganja.js"></script>
+  <style>
+    .fixed { width: 320px; height: 180px; }
+    .responsive { width: 100%; height: auto; }
+  </style>
+</head>
+<body>
+  <h1>WebGL canvas sizing regression checks</h1>
+  <pre id="result">Running…</pre>
+  <script>
+    // Drive a bounded number of real renderer frames to catch intrinsic-size
+    // feedback without allocating exponentially larger GPU buffers on failure.
+    window.requestAnimationFrame=()=>{};
+    const PGA=Algebra(3,0,1), CGA=Algebra(4,1), results=[];
+    const close=(a,b)=>Math.abs(a-b)<0.6;
+    function check(canvas,expected,dpr) {
+      for(let frame=0;frame<8;frame++) {
+        canvas.update(canvas.value);
+        const css=getComputedStyle(canvas);
+        if(!close(parseFloat(css.width),expected[0]) || !close(parseFloat(css.height),expected[1]))
+          throw Error('CSS size changed on frame '+frame+': '+css.width+' × '+css.height);
+        if(canvas.width!==Math.round(expected[0]*dpr) || canvas.height!==Math.round(expected[1]*dpr))
+          throw Error('Wrong backing buffer: '+canvas.width+' × '+canvas.height);
+      }
+    }
+    try {
+      for(const renderer of ['PGA','CGA','implicit']) for(const dpr of [1,1.25,2]) {
+        for(const sizing of ['intrinsic','options','stylesheet','responsive']) {
+          const host=document.createElement('div'); host.style.width='400px'; document.body.appendChild(host);
+          const options={gl:true,devicePixelRatio:dpr};
+          if(sizing==='options') Object.assign(options,{width:'320px',height:'180px'});
+          const canvas=renderer==='implicit'?PGA.graphGL2([],options):
+            (renderer==='CGA'?CGA:PGA).graph([],{...options,conformal:renderer==='CGA'});
+          if(sizing==='stylesheet') canvas.className='fixed';
+          if(sizing==='responsive') canvas.className='responsive';
+          host.appendChild(canvas);
+          const expected=sizing==='intrinsic'?[300,150]:sizing==='responsive'?[400,200]:[320,180];
+          check(canvas,expected,dpr);
+          if(sizing==='responsive') {
+            host.style.width='500px'; check(canvas,[500,250],dpr);
+            if(canvas.style.width || canvas.style.height) throw Error('Responsive CSS was overridden');
+          }
+          // A monitor or browser zoom change must resize the buffer only.
+          canvas.options.devicePixelRatio=1.5;
+          check(canvas,sizing==='responsive'?[500,250]:expected,1.5);
+          results.push({renderer,dpr,sizing,status:'PASS'});
+          canvas.getContext(renderer==='implicit'?'webgl2':'webgl').getExtension('WEBGL_lose_context').loseContext();
+          host.remove();
+        }
+      }
+      document.body.dataset.status='PASS';
+    } catch(error) {
+      document.body.dataset.status='FAIL'; results.push({error:error.message});
+    }
+    document.getElementById('result').textContent=JSON.stringify({status:document.body.dataset.status,checks:results},null,2);
+  </script>
+</body>
+</html>
