@@ -3,8 +3,8 @@ const Algebra = require('../ganja.js');
 
 const PGA = Algebra(3,0,1);
 const CGA = Algebra(4,1);
-const point = (x,y,z,w=1) => PGA.Trivector(z*w,y*w,x*w,w);
-const world = p => [p[13]/p[14],p[12]/p[14],p[11]/p[14]];
+const point = (x,y,z,w=1) => PGA.Vector(1,x,y,z).Dual.Scale(w);
+const world = p => [-p[13]/p[14],p[12]/p[14],-p[11]/p[14]];
 const near = (actual,expected,epsilon=1e-5) => actual.forEach((x,i) => assert.ok(Math.abs(x-expected[i])<epsilon, `${actual} != ${expected}`));
 
 // An in-memory WebGL canvas records the coordinates actually passed to the renderer.
@@ -48,6 +48,9 @@ function graph(items,algebra=PGA,options={}) {
 }
 
 const O=point(0,0,0), X=point(1,0,0), Y=point(0,1,0), Z=point(0,0,1);
+near([X[11],X[12],X[13],X[14]],[0,0,-1,1]);
+near([Y[11],Y[12],Y[13],Y[14]],[0,1,0,1]);
+near([Z[11],Z[12],Z[13],Z[14]],[-1,0,0,1]);
 const axes=[world(X),world(Y),world(Z)];
 axes.forEach((v,i)=>near(v,[0,1,2].map(j=>i===j?1:0)));
 const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
@@ -65,14 +68,14 @@ assert.ok(graph([{data:[[O,point(1,0,0),point(0,1,0)]]}]).draws.some(d=>d.type==
   d.vertices.slice(0,9).join(',')==='0,0,0,1,0,0,0,1,0'), 'unindexed mesh');
 const mesh=transform=>graph([{data:[O,point(1,0,0),point(0,1,0)],idx:[0,1,2],transform}]).draws[0];
 const identityMesh=mesh(PGA.Scalar(1));
-const translationsForModel=[[5,0.5],[6,-0.5],[7,0.5]];
+const translationsForModel=[[5,-0.5],[6,-0.5],[7,-0.5]];
 translationsForModel.forEach(([blade,coefficient],i)=>{
   const moved=mesh(PGA.Coeff(blade,coefficient).Exp());
   near(moved.matrix.slice(12,15).map((v,j)=>v-identityMesh.matrix[12+j]),[0,1,2].map(j=>i===j?1:0));
 });
-const rotatedMesh=mesh(PGA.Coeff(8,Math.PI/4).Exp());
+const rotatedMesh=mesh(PGA.Coeff(8,-Math.PI/4).Exp());
 near([rotatedMesh.matrix[0],rotatedMesh.matrix[1],rotatedMesh.matrix[2]],[0,1,0]);
-const particle=graph([{motor:PGA.Coeff(5,0.5).Exp(),xRange:0,yRange:0,zRange:0}]).draws[0];
+const particle=graph([{motor:PGA.Coeff(5,-0.5).Exp(),xRange:0,yRange:0,zRange:0}]).draws[0];
 near(particle.vertices2.slice(0,3).map((x,i)=>x-particle.vertices[i]),[1,0,0]);
 const cameraFrame=graph([point(1,0,0)],PGA,{camera:PGA.Coeff(8,Math.PI/4).Exp()}).draws[0];
 const cm=cameraFrame.matrix;
@@ -87,11 +90,15 @@ const interactiveY=graph([point(0,1,0)]);
 interactiveY.canvas.onmousedown({detail:1,button:0,x:250,y:125,preventDefault(){},stopPropagation(){}});
 interactiveY.canvas.onmousemove({movementX:0,movementY:25,offsetX:250,offsetY:150,buttons:1});
 assert.ok(world(interactiveY.canvas.value[0])[1]<1, 'dragging down must reduce world Y');
+const interactiveZ=graph([point(0,0,1)]);
+interactiveZ.canvas.onmousedown({detail:1,button:0,x:250,y:250,preventDefault(){},stopPropagation(){}});
+interactiveZ.canvas.onmousemove({movementX:50,movementY:0,offsetX:300,offsetY:250,buttons:1});
+near(world(interactiveZ.canvas.value[0]),[0.48,0,1]);
 const label=graph([point(1,0,0),'X'],PGA,{htmlText:true});
 assert.ok(label.nodes[0].style.left>250, 'HTML text anchor follows positive X');
 
 // A PGA motor can use different blade signs for different translation axes.
-const translations=[[5,0.5],[6,-0.5],[7,0.5]];
+const translations=[[5,-0.5],[6,-0.5],[7,-0.5]];
 translations.forEach(([blade,coefficient],i)=>near(world(PGA.sw(PGA.Coeff(blade,coefficient).Exp(),O)),axes[i]));
 translations.forEach(([blade,coefficient],i)=>{
   const orbit=u=>PGA.Coeff(blade,coefficient*u).Exp();
@@ -99,12 +106,12 @@ translations.forEach(([blade,coefficient],i)=>{
   const rendered=graph([orbit]).draws;
   assert.ok(rendered.some(d=>d.type===4 && d.vertices.some((v,k)=>k%3===i && Math.abs(v-1)<1e-5)), `motor orbit axis ${i}`);
 });
-const orbitMesh=(u,v)=>PGA.Coeff(5,u*0.5).Exp().Mul(PGA.Coeff(6,-v*0.5).Exp());
+const orbitMesh=(u,v)=>PGA.Coeff(5,-u*0.5).Exp().Mul(PGA.Coeff(6,-v*0.5).Exp());
 orbitMesh.dx=2; orbitMesh.dy=2;
 assert.ok(graph([orbitMesh]).draws.some(d=>d.type===4 && d.indices &&
   d.vertices.some((x,i)=>i%3===0 && Math.abs(x-1)<1e-5) &&
   d.vertices.some((x,i)=>i%3===1 && Math.abs(x-1)<1e-5)), 'motor orbit mesh');
-const rz=PGA.Coeff(8,Math.PI/4).Exp();
+const rz=PGA.Coeff(8,-Math.PI/4).Exp();
 near(world(PGA.sw(rz,point(1,0,0))),axes[1]);
 
 const ni=CGA.Coeff(4,1).Add(CGA.Coeff(5,1));

@@ -1182,15 +1182,15 @@
 
     // webGL Graphing function. (for parametric defined objects)
       static graphGL(f,options) {
-      // PGA3D homogeneous point in this generator's stored basis:
-      // P = w (e123 + x e023 + y e013 + z e012).
-      // Coefficient indices: e012 -> 11 -> z, e013 -> 12 -> y,
-      // e023 -> 13 -> x, e123 -> 14 -> homogeneous weight.
-      // Reversing blade digits (e021/e032) also reverses their algebraic signs.
+      // PGA3D point = !(e0 + x e1 + y e2 + z e3) in this generator's stored basis:
+      // P = w (e123 - x e023 + y e013 - z e012).
+      // Coefficient indices: e012 -> 11 -> -z, e013 -> 12 -> y,
+      // e023 -> 13 -> -x, e123 -> 14 -> homogeneous weight.
+      // The oriented blades e021 and e032 have the opposite signs of e012/e023.
       // World coordinates use a right-handed frame: X = +x, Y = +y, Z = +z.
-        const pgaCoefficientsToWorld = (p,w) => [p[13]/w,p[12]/w,p[11]/w];
+        const pgaCoefficientsToWorld = (p,w) => [-p[13]/w,p[12]/w,-p[11]/w];
         const pgaPointToWorld = p => pgaCoefficientsToWorld(p,p[14]);
-        const worldToPgaPoint = ([x,y,z]) => Element.Trivector(z,y,x,1);
+        const worldToPgaPoint = ([x,y,z]) => Element.Trivector(-z,y,-x,1);
         const pgaMotorToWorldMatrix = motor => {
           const m = motor.Normalized;
           const origin = pgaPointToWorld(Element.sw(m,worldToPgaPoint([0,0,0])));
@@ -1609,9 +1609,9 @@
             function sw_mot_orig(A,R){
               var a0=A[0],a1=A[5],a2=A[6],a3=A[7],a4=A[8],a5=A[9],a6=A[10],a7=A[15];
               // Match pgaPointToWorld(Element.sw(A, origin)) for unit motors.
-              R[2] =  2*(a0*a3+a4*a7-a6*a2-a5*a1);
+              R[2] = -2*(a0*a3+a4*a7-a6*a2-a5*a1);
               R[1] =  2*(a4*a1-a0*a2-a6*a3+a5*a7);
-              R[0] =  2*(a0*a1+a4*a2+a5*a3+a6*a7);
+              R[0] = -2*(a0*a1+a4*a2+a5*a3+a6*a7);
               return R
             }
             if ( e.call && e.length==1) { var count=e.dx||64;
@@ -1762,8 +1762,8 @@
                var ox = (1/(options.scale || 1)) * ((e.offsetX / cw) - 0.5);
                var oy = (1/(options.scale || 1)) * ((e.offsetY / ch) - 0.5) * (ch/cw);
                var tb  = Element.sw(options.camera,canvas.value[sel]);
-               // offsetY grows downward in screen space; z is negative at the default camera depth.
-               var z = -(tb.e012/tb.e123+5)/5*4; tb.e023 = -ox*z*tb.e123; tb.e013 = oy*z*tb.e123;
+               // offsetY grows downward in screen space; depth uses world Z, not its PGA coefficient.
+               var z = -(pgaPointToWorld(tb)[2]+5)/5*4; tb.e023 = ox*z*tb.e123; tb.e013 = oy*z*tb.e123;
                canvas.value[sel].set(Element.sw(options.camera.Reverse, tb));
             }
             if (!options.animate) requestAnimationFrame(canvas.update.bind(canvas,f,options));

@@ -12,11 +12,12 @@
 <body>
   <h1>PGA3D right-handed frame</h1>
   <p>Drag the background to rotate the camera. Drag a point to check editing. X × Y = Z.</p>
+  <p>At this camera angle, world +Z projects left on the screen; its world coordinate is still (0,0,+1).</p>
   <div id="frame"></div>
   <script>
     const PGA = Algebra(3,0,1);
-    // Element.Trivector arguments follow e012, e013, e023, e123.
-    const point = (x,y,z) => PGA.Trivector(z,y,x,1);
+    // Use the same dual point convention as the PGA examples.
+    const point = (x,y,z) => PGA.Vector(1,x,y,z).Dual;
     const O = point(0,0,0), X = point(1,0,0), Y = point(0,1,0), Z = point(0,0,1);
     document.getElementById('frame').appendChild(PGA.graph(() => [
       0x444444, O, 'O',
