@@ -1884,8 +1884,11 @@
           }
           return tokens;
       }
-      // Glue all back together and return as bound function.
-        return eval( ('('+(function f(t){return t.map(t=>t instanceof Array?f(t):typeof t == "string"?t:"").join('');})(translate(tok))+')') );
+      // Compile outside the tokenizer's lexical scope. Direct eval captures
+      // internal names such as c (the last token, often '}') instead of globals
+      // referenced by user code. Keep only the algebra bindings and arrow this.
+        return new Function('Element','Algebra','"use strict"; return ('+
+          (function f(t){return t.map(t=>t instanceof Array?f(t):typeof t == "string"?t:"").join('');})(translate(tok))+');').call(this,Element,Algebra);
       }
     }
 

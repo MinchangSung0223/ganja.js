@@ -58,8 +58,9 @@ GAViewer syntax test.
       // no assignment, no graphing .. just evaluate and print the output.
       histp=-1; var ocmd=cmd;
       try {
-        var dynamic = cmd.match(/dynamic\s*\{/)
-        if (dynamic) cmd = cmd.replace(/dynamic\s*\{/,"").replace(/\}\s*$/,"");
+        var dynamic = cmd.match(/^\s*dynamic\s*\{([\s\S]*)\}\s*(?:\/\/[^\r\n]*)?$/);
+        if (dynamic) cmd = dynamic[1];
+        var suppressRender = /;\s*$/.test(cmd);
         var vname = cmd.match( /^\s*([A-Za-z_\-]+)\s*=(.*)/ );
         if (vname) {
           var result = A.inline(new Function("return "+(dynamic?" ()=>":"")+vname[2]))();
@@ -67,7 +68,10 @@ GAViewer syntax test.
         } else {
           var result = A.inline(new Function("return "+(dynamic?" ()=>":"")+cmd))();
         }
-        if (result != undefined) { cmds.push(ocmd); if (result._color) results.push(result._color); results.push(result); }
+        if (result != undefined) {
+          cmds.push(ocmd);
+          if (!suppressRender) { if (result._color) results.push(result._color); results.push(result); }
+        }
       } catch (e) {
         out.innerHTML += '<FONT COLOR=#800>'+e.message+'</FONT>\n';
         out.scrollTop += 1000;
@@ -78,7 +82,7 @@ GAViewer syntax test.
         out.innerHTML += '['+cmds.length+'] '+(dynamic?"dynamic{"+toTex(cmd)+"}":toTex(cmd))+'\n'+((vname&&vname[1])||"ans")+' = '+toTex(''+result)+'\n';
         renderMathInElement(out,{delimiters:[{left: '$',right:'$',display:!1}]});
         out.scrollTop += 1000;
-        if (!cmd.match(/;\s*$/)) {
+        if (!suppressRender) {
           Graph.value.splice(0,Graph.value.length,...results);
           Graph.update(Graph.value);
         }

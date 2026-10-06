@@ -8,7 +8,7 @@
     "codegen": "algebra generator for c++, c#, rust, python"
   },
   "scripts": {
-    "test": "node tests/right_handed_frame.test.js"
+    "test": "node tests/right_handed_frame.test.js && node tests/inline_scope.test.js && node tests/gav_commands.test.js"
   },
   "repository": {
     "type": "git",
