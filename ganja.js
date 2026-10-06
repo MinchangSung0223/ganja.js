@@ -1182,6 +1182,22 @@
 
     // webGL Graphing function. (for parametric defined objects)
       static graphGL(f,options) {
+      // PGA3D homogeneous point in this generator's stored basis:
+      // P = w (e123 + x e023 + y e013 + z e012).
+      // Coefficient indices: e012 -> 11 -> z, e013 -> 12 -> y,
+      // e023 -> 13 -> x, e123 -> 14 -> homogeneous weight.
+      // Reversing blade digits (e021/e032) also reverses their algebraic signs.
+      // World coordinates use a right-handed frame: X = +x, Y = +y, Z = +z.
+        const pgaCoefficientsToWorld = (p,w) => [p[13]/w,p[12]/w,p[11]/w];
+        const pgaPointToWorld = p => pgaCoefficientsToWorld(p,p[14]);
+        const worldToPgaPoint = ([x,y,z]) => Element.Trivector(z,y,x,1);
+        const pgaMotorToWorldMatrix = motor => {
+          const m = motor.Normalized;
+          const origin = pgaPointToWorld(Element.sw(m,worldToPgaPoint([0,0,0])));
+          const axes = [[1,0,0],[0,1,0],[0,0,1]].map(axis =>
+            pgaPointToWorld(Element.sw(m,worldToPgaPoint(axis))).map((v,i) => v-origin[i]));
+          return [...axes[0],0,...axes[1],0,...axes[2],0,...origin,1];
+        };
       // Create a canvas, webgl2 context and set some default GL options.
         var canvas=document.createElement('canvas'); canvas.style.width=options.width||''; canvas.style.height=options.height||''; canvas.style.backgroundColor='#EEE';
         if (options.width && options.width.match && options.width.match(/px/i)) canvas.width = parseFloat(options.width); if (options.height && options.height.match && options.height.match(/px/i)) canvas.height = parseFloat(options.height);
@@ -1404,9 +1420,10 @@
         // Create default camera matrix and initial lastposition (contra-compensated for camera)
           M = mtx(options.camera); 
           var a = new this(); a.set([1,-2,1.90*canvas.height/canvas.width,0],1); a = options.camera.Conjugate.Mul(a.Dual).Mul(options.camera);
-          lastpos = a.slice(11,14).map((y,i)=>(i<=1?1:-1)*y/a[14]).reverse();
+          lastpos = pgaPointToWorld(a);
           var linediff = new this(); linediff.set([0,0,-0.12*2000/canvas.width*(options.fontSize||1),0],1);
-          linediff = options.camera.Conjugate.Mul(linediff.Dual).Mul(options.camera).slice(11,14).map((y,i)=>(i<=1?1:-1)*y/a[14]).reverse();
+          // This is a direction (weight zero), scaled by the anchor point's weight.
+          linediff = pgaCoefficientsToWorld(options.camera.Conjugate.Mul(linediff.Dual).Mul(options.camera),a[14]);
         // Grid.
           if (options.grid) {
             const gr = options.gridSize||1;
@@ -1585,14 +1602,15 @@
                e=[e.LDot(e14).Wedge(e).Add(e.Wedge(Element.Coeff(1,1)).Mul(Element.Coeff(0,-(options.clip||3)))),e.LDot(e14).Wedge(e).Add(e.Wedge(Element.Coeff(1,1)).Mul(Element.Coeff(0,options.clip||3)))]
                  .map(x=>x[14]<0?x.Scale(-1):x);
           // If euclidean point, store as point, store line segments and triangles.
-            if (e.e123) p.push.apply(p,e.slice(11,14).map((y,i)=>(i<=1?1:-1)*y/e[14]).reverse());
-            if (e instanceof Array && e.length==2) l=l.concat.apply(l,e.map(x=>[...x.slice(11,14).map((y,i)=>(i<=1?1:-1)*y/x[14]).reverse()]));
-            if (e instanceof Array && e.length%3==0) t=t.concat.apply(t,e.map(x=>[...x.slice(11,14).map((y,i)=>(i<=1?1:-1)*y/x[14]).reverse()]));
+            if (e.e123) p.push(...pgaPointToWorld(e));
+            if (e instanceof Array && e.length==2) e.forEach(x=>l.push(...pgaPointToWorld(x)));
+            if (e instanceof Array && e.length%3==0) e.forEach(x=>t.push(...pgaPointToWorld(x)));
           // Render orbits of parametrised motors, as well as lists of points.. 
             function sw_mot_orig(A,R){
               var a0=A[0],a1=A[5],a2=A[6],a3=A[7],a4=A[8],a5=A[9],a6=A[10],a7=A[15];
-              R[2] = -2*(a0*a3+a4*a7-a6*a2-a5*a1);
-              R[1] = -2*(a4*a1-a0*a2-a6*a3+a5*a7);
+              // Match pgaPointToWorld(Element.sw(A, origin)) for unit motors.
+              R[2] =  2*(a0*a3+a4*a7-a6*a2-a5*a1);
+              R[1] =  2*(a4*a1-a0*a2-a6*a3+a5*a7);
               R[0] =  2*(a0*a1+a4*a2+a5*a3+a6*a7);
               return R
             }
@@ -1601,7 +1619,7 @@
                 if (ii>1) l.push(xx[0],xx[1],xx[2]);
                 var m = e(ii/(count-1));
                 if (ii==0) ismot = m[0]||m[5]||m[6]||m[7]||m[8]||m[9]||m[10];
-                xx = ismot?sw_mot_orig(m,o):m.slice(11,14).map((y,i)=>(i<=1?1:-1)*y).reverse(); //Element.sw(e(ii/(count-1)),o);
+                xx = ismot?sw_mot_orig(m,o):pgaPointToWorld(m);
                 l.push(xx[0],xx[1],xx[2]);
               }
             }
@@ -1618,11 +1636,11 @@
                  e.xRange = e.xRange === undefined ? 1:e.xRange; e.yRange = e.yRange === undefined ? 1:e.yRange; e.zRange = e.zRange === undefined ? 1:e.zRange;
                  var vtx=[], tx=[], vtx2=[];
                  for (var i=0; i<(e.zRange===0?5000:60000); i++) {
-                   var p  = Element.Trivector(random()*(2*e.xRange)-e.xRange,random()*2*e.yRange-e.yRange,random()*2*e.zRange-e.zRange,1);
+                   var p  = worldToPgaPoint([random()*(2*e.xRange)-e.xRange,random()*2*e.yRange-e.yRange,random()*2*e.zRange-e.zRange]);
 //                   var p2 = Element.sw(e.motor,p);
                    var p2 = e.motor.Mul(p).Mul(e.motor.Inverse);
                    tx.push(random(), random());
-                   vtx.push(...p.slice(11,14).reverse()); vtx2.push(...p2.slice(11,14).reverse());
+                   vtx.push(...pgaPointToWorld(p)); vtx2.push(...pgaPointToWorld(p2));
                  }  
                  e.va = createVA(vtx,tx,undefined,vtx2); e.va.tcount = vtx.length/3;
                  e.recalc = false;
@@ -1637,16 +1655,17 @@
               // Create the vertex array and store it for re-use.
               if (!e.va) {
                 if (e.idx) {
-                  var et = e.data.map(x=>[...x.slice(11,14).map((y,i)=>(i<=1?1:-1)*y/x[14]).reverse()]).flat();
+                  var et = e.data.flatMap(pgaPointToWorld);
                 } else {
-                  var et=[]; e.data.forEach(e=>{if (e instanceof Array && e.length==3) et=et.concat.apply(et,e.map(x=>[...x.slice(11,14).map((y,i)=>(i<=1?1:-1)*y/x[14]).reverse()]));});
+                  var et=[]; e.data.forEach(e=>{if (e instanceof Array && e.length==3) e.forEach(x=>et.push(...pgaPointToWorld(x)));});
                 }
                 e.va = createVA(et,undefined,e.idx,e.color?new Float32Array(e.color):undefined); e.va.tcount = (e.idx && e.idx.length)?e.idx.length:e.data.length*3;
               }
               // render the vertex array.
               var M5 = Element.Scalar(1).Add(Element.Coeff(7,2.5));
               if (e.transform) {
-                  var M1 = mtx(e.transform, false);
+                  // Model transforms follow the same PGA-to-world mapping as vertices.
+                  var M1 = pgaMotorToWorldMatrix(e.transform);
                   var M2 = mtx(M5.Mul(options.camera), false);
                   M = Array(16).fill(0);
                   for (var ii=0; ii<4; ++ii) for (var jj=0; jj<4; ++jj) for (var kk=0; kk<4; ++kk) M[ii*4+kk] += M1[ii*4+jj] * M2[jj*4+kk];
@@ -1711,7 +1730,7 @@
           var rc = canvas.getBoundingClientRect(), mx=(e.x-rc.left)/(rc.right-rc.left)*2-1, my=((e.y-rc.top)/(rc.bottom-rc.top)*4-2)*canvas.height/canvas.width;
           sel = (e.button==2)?-3:-2; canvas.value.forEach((x,i)=>{
             if (tot != 5) { if (x[14]) {
-              var pos2 = Element.Mul( [[M[0],M[4],M[8],M[12]],[M[1],M[5],M[9],M[13]],[M[2],M[6],M[10],M[14]],[M[3],M[7],M[11],M[15]]], [-x[13]/x[14],x[12]/x[14],x[11]/x[14],1]).map(x=>x.s);
+              var pos2 = Element.Mul( [[M[0],M[4],M[8],M[12]],[M[1],M[5],M[9],M[13]],[M[2],M[6],M[10],M[14]],[M[3],M[7],M[11],M[15]]], [...pgaPointToWorld(x),1]).map(x=>x.s);
               pos2 = Element.Mul( [[5,0,0,0],[0,-5*(2),0,0],[0,0,1,-1],[0,0,2,0]], pos2).map(x=>x.s).map((x,i,a)=>x/a[3]);
               if ((mx-pos2[0])**2 + ((my)-pos2[1])**2 < 0.001) sel=i;
             }} else {
@@ -1730,7 +1749,7 @@
              options.h = (options.h||0)+mx; options.p = Math.max(-Math.PI/2,Math.min(Math.PI/2, (options.p||0)+my)); if (!options.animate) requestAnimationFrame(canvas.update.bind(canvas,f,options)); return;
           };
           canvas.onmousemove=(e)=>{
-            var rc = canvas.getBoundingClientRect(),x; if (sel>=0) { if (tot==5) x=interprete(canvas.value[sel]); else { x=canvas.value[sel]; x={pos:[-x[13]/x[14],-x[12]/x[14],x[11]/x[14]]};  }}
+            var rc = canvas.getBoundingClientRect(),x; if (sel>=0) { if (tot==5) x=interprete(canvas.value[sel]); else x={pos:pgaPointToWorld(canvas.value[sel])}; }
             var mx =(e.movementX)/(rc.right-rc.left)*2, my=((e.movementY)/(rc.bottom-rc.top)*2)*canvas.height/canvas.width;
             if (sel==-2) { options.h = (options.h||0)+(options.conformal?-1:1)*mx/2; options.p = Math.max(-Math.PI/2,Math.min(Math.PI/2, (options.p||0)-my/2)); if (options.camera) options.camera.set( ( Element.Bivector(0,0,0,0,0,options.p).Exp() ).Mul( Element.Bivector(0,0,0,0,options.h,0).Exp() )); if (!options.animate) requestAnimationFrame(canvas.update.bind(canvas,f,options)); return; };
             if (sel==-3) { var ct = Math.cos(options.h||0), st= Math.sin(options.h||0), ct2 = Math.cos(options.p||0), st2 = Math.sin(options.p||0);
@@ -1743,7 +1762,8 @@
                var ox = (1/(options.scale || 1)) * ((e.offsetX / cw) - 0.5);
                var oy = (1/(options.scale || 1)) * ((e.offsetY / ch) - 0.5) * (ch/cw);
                var tb  = Element.sw(options.camera,canvas.value[sel]);
-               var z = -(tb.e012/tb.e123+5)/5*4; tb.e023 = ox*z*tb.e123; tb.e013 = oy*z*tb.e123;
+               // offsetY grows downward in screen space; z is negative at the default camera depth.
+               var z = -(tb.e012/tb.e123+5)/5*4; tb.e023 = -ox*z*tb.e123; tb.e013 = oy*z*tb.e123;
                canvas.value[sel].set(Element.sw(options.camera.Reverse, tb));
             }
             if (!options.animate) requestAnimationFrame(canvas.update.bind(canvas,f,options));

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>PGA3D right-handed frame</title>
+  <script src="../ganja.js"></script>
+  <style>
+    body { font: 16px sans-serif; margin: 24px; background: #f4f4f4; }
+    canvas { display: block; width: min(100%, 760px); height: 560px; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <h1>PGA3D right-handed frame</h1>
+  <p>Drag the background to rotate the camera. Drag a point to check editing. X × Y = Z.</p>
+  <div id="frame"></div>
+  <script>
+    const PGA = Algebra(3,0,1);
+    // Element.Trivector arguments follow e012, e013, e023, e123.
+    const point = (x,y,z) => PGA.Trivector(z,y,x,1);
+    const O = point(0,0,0), X = point(1,0,0), Y = point(0,1,0), Z = point(0,0,1);
+    document.getElementById('frame').appendChild(PGA.graph(() => [
+      0x444444, O, 'O',
+      0xff3333, [O,X], X, '+X (1,0,0)',
+      0x22aa22, [O,Y], Y, '+Y (0,1,0)',
+      0x3366ff, [O,Z], Z, '+Z (0,0,1)'
+    ], {gl:true, h:0.55, p:-0.3, lineWidth:4, pointRadius:1.5}));
+  </script>
+</body>
+</html>

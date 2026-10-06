@@ -8,7 +8,7 @@
     "codegen": "algebra generator for c++, c#, rust, python"
   },
   "scripts": {
-    "test": "Algebra(0,1,()=>1e1*1e1==-1);"
+    "test": "node tests/right_handed_frame.test.js"
   },
   "repository": {
     "type": "git",
