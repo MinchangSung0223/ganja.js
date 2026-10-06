@@ -1211,6 +1211,9 @@
         const pgaCoefficientsToWorld = (p,w) => [-p[13]/w,p[12]/w,-p[11]/w];
         const pgaPointToWorld = p => pgaCoefficientsToWorld(p,p[14]);
         const worldToPgaPoint = ([x,y,z]) => Element.Trivector(-z,y,-x,1);
+        // CGA points are homogeneous too: w = -ni.P = P.e5 - P.e4.
+        // Divide even for motor samples, whose origin may use the opposite sign.
+        const cgaPointToWorld = p => [p[1],p[2],p[3]].map(v=>v/(p[5]-p[4]));
         const pgaMotorToWorldMatrix = motor => {
           const m = motor.Normalized;
           const origin = pgaPointToWorld(Element.sw(m,worldToPgaPoint([0,0,0])));
@@ -1420,7 +1423,7 @@
           } else if (x2zero) {                          // bound vec,biv,tri (points)
             if (options.ipns) x=x.Dual;
             attitude = ni.Wedge(no).LDot(ni.Wedge(x));
-            pos = [...(Element.LDot(1/(ni.LDot(x)).s,x)).slice(1,4)].map(x=>-x);
+            pos = cgaPointToWorld(x);
             tp=1;
           } else if (!x2zero) {                          // round (point pair,circle,sphere)
             tp = x.Grade(3).VLength?4:x.Grade(2).VLength?6:5;
@@ -1553,14 +1556,14 @@
                   if ( e.call && e.length==2 && !e.va3) { var countx=e.dx||32,county=e.dy||32;
                     var temp=new Float32Array(3*countx*county),o=new Float32Array(3),et=[];
                     for (var pp=0,ii=0; ii<countx; ii++) for (var jj=0; jj<county; jj++,pp+=3)
-                      temp.set(Element.sw(e(ii/(countx-1),jj/(county-1)),no).slice(1,4),pp);
+                      temp.set(cgaPointToWorld(Element.sw(e(ii/(countx-1),jj/(county-1)),no)).map(v=>v*(options.scale||1)),pp);
                     for (ii=0; ii<countx-1; ii++) for (var jj=0; jj<county; jj++)
                       et.push((ii+0)*county+(jj+0),(ii+0)*county+(jj+1),(ii+1)*county+(jj+1),(ii+0)*county+(jj+0),(ii+1)*county+(jj+1),(ii+1)*county+(jj+0));
                     e.va3 = createVA(temp,undefined,et.map(x=>x%(countx*county))); e.va3.tcount = (countx-1)*county*2*3;
                   }
                   if ( e.call && e.length==1 && !e.va2) { var countx=e.dx||256;
                     var temp=new Float32Array(3*countx),o=new Float32Array(3),et=[];
-                    for (var ii=0; ii<countx; ii++) { temp.set(Element.sw(e(ii/(countx-1)),no).slice(1,4),ii*3); if (ii) et.push(ii-1,ii); }
+                    for (var ii=0; ii<countx; ii++) { temp.set(cgaPointToWorld(Element.sw(e(ii/(countx-1)),no)).map(v=>v*(options.scale||1)),ii*3); if (ii) et.push(ii-1,ii); }
                     e.va2 = createVA(temp,undefined,et); e.va2.tcount = et.length;
                   }
                 // Experimental display of motors using particle systems.

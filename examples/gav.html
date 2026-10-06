@@ -150,7 +150,8 @@ GAViewer syntax test.
         cyan    = (x)=>{ x._color = 0x00FFFF; return x; },
         white   = (x)=>{ x._color = 0xFFFFFF; return x; },
         black   = (x)=>{ x._color = 0xFFFFFF; return x; },
-        pt      = A.inline(x=>no+x+.5*x.Length*ni);
+        // A conformal point uses squared Euclidean length so that pt(x)^2 = 0.
+        pt      = A.inline(x=>no+x+.5*(x*x)*ni);
   // 2D PGA      
 //    const [e0,e1,e2,e12,e01,e02,e012] = A.inline(()=>[1e0,1e1,1e2,1e12,1e01,1e02,1e012])();         
   // 3D CGA      

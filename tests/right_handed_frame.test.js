@@ -187,4 +187,39 @@ for (const conformal of [false,true]) {
   }
   if (!conformal) near([p[14]],[weight]);
 }
-console.log('PGA point, line, triangle, mesh, picking, dragging, translations, rotation, and CGA coordinates: pass');
+// Exercise GAV's actual pt() definition, including non-unit input vectors.
+const gavSource=require('fs').readFileSync(require('path').join(__dirname,'../examples/gav.html'),'utf8');
+const gavPtSource=gavSource.match(/pt\s*=\s*A.inline\((.*?)\);/)[1];
+const gavPt=CGA.inline(new Function('no','ni','return ('+gavPtSource+');'))(no,ni);
+for (const v of [[0,0,0],...axes,[2,0,0],[0,-3,0],[1,1,1]]) {
+  const p=gavPt(CGA.Vector(...v,0,0));
+  near([p.Mul(p).s],[0]);
+  const draws=graph([p],CGA,{conformal:true}).draws;
+  assert.ok(draws.some(d=>d.type===0 && d.vertices.length===3), 'GAV pt must render as a point');
+  near(draws.find(d=>d.type===0).vertices,v);
+}
+
+// CGA motor curves/surfaces must agree with the transformed point, including
+// homogeneous motor scaling and the display scale option.
+const cgaTranslation=v=>CGA.Scalar(1).Sub(CGA.Vector(...v,0,0).Mul(ni).Scale(0.5));
+for (const scale of [1,2]) for (const motorScale of [1,2]) {
+  axes.forEach(axis=>{
+    const orbit=u=>cgaTranslation(axis.map(v=>v*u)).Scale(motorScale);
+    orbit.dx=2;
+    const line=graph([orbit],CGA,{conformal:true,scale}).draws.find(d=>d.indices);
+    near(line.vertices,[0,0,0,...axis.map(v=>scale*v)]);
+  });
+  const surface=(u,v)=>cgaTranslation([u,v,0]).Scale(motorScale);
+  surface.dx=2; surface.dy=2;
+  const mesh=graph([surface],CGA,{conformal:true,scale}).draws.find(d=>d.indices);
+  near(mesh.vertices,[0,0,0,0,scale,0,scale,0,0,scale,scale,0]);
+}
+// Screen right, screen up, and toward the viewer form a right-handed frame.
+// Check the actual CGA shader matrices, including rotated GAV-style views.
+for (const [h,p] of [[0,0],[0.55,-0.3],[2,0.8]]) {
+  const draw=graph([cgaPointAt([0,0,0])],CGA,{conformal:true,h,p,z:8},true).draws[0];
+  const origin=projected([0,0,0],draw);
+  const renderedAxes=axes.map(axis=>projected(axis,draw).slice(0,3).map((v,i)=>(v-origin[i])*(i===2?-1:1)));
+  assert.ok(determinant(...renderedAxes)>0, 'CGA projection must preserve handedness');
+}
+console.log('PGA/CGA coordinates, projection, dragging, GAV points, and motor orbits: pass');
