@@ -1198,6 +1198,23 @@
             pgaPointToWorld(Element.sw(m,worldToPgaPoint(axis))).map((v,i) => v-origin[i]));
           return [...axes[0],0,...axes[1],0,...axes[2],0,...origin,1];
         };
+        const worldToView = ([x,y,z],m) => [
+          m[0]*x+m[4]*y+m[8]*z+m[12],
+          m[1]*x+m[5]*y+m[9]*z+m[13],
+          m[2]*x+m[6]*y+m[10]*z+m[14]
+        ];
+        const viewToWorld = ([x,y,z],m) => {
+          const [dx,dy,dz]=[x-m[12],y-m[13],z-m[14]];
+          return [m[0]*dx+m[1]*dy+m[2]*dz,
+                  m[4]*dx+m[5]*dy+m[6]*dz,
+                  m[8]*dx+m[9]*dy+m[10]*dz];
+        };
+        // Right-handed camera: +X right, +Y up, -Z forward. Clip W must be positive in front.
+        const projectionMatrix = ratio => [5,0,0,0,0,5*ratio,0,0,0,0,-1,-2,0,0,-1,0];
+        const worldToNDC = (point,m,ratio) => {
+          const [x,y,z]=worldToView(point,m), p=projectionMatrix(ratio), w=p[11]*z;
+          return [p[0]*x/w,p[5]*y/w,(p[10]*z+p[14])/w,w];
+        };
       // Create a canvas, webgl2 context and set some default GL options.
         var canvas=document.createElement('canvas'); canvas.style.width=options.width||''; canvas.style.height=options.height||''; canvas.style.backgroundColor='#EEE';
         if (options.width && options.width.match && options.width.match(/px/i)) canvas.width = parseFloat(options.width); if (options.height && options.height.match && options.height.match(/px/i)) canvas.height = parseFloat(options.height);
@@ -1240,18 +1257,18 @@
               [va.b,va.b2,va.b4,va.b3].forEach(x=>{if(x) gl.deleteBuffer(x)}); if (va.r) gl.va.deleteVertexArrayOES(va.r);
             }
       // Default modelview matrix, convert camera to matrix (biquaternion->matrix)
-        var M=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,5,1], mtx = (x,iscam=true)=>{ var t=options.spin?performance.now()*options.spin/1000:-options.h||0, t2=options.p||0;
+        var M=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,-5,1], mtx = (x)=>{ var t=options.spin?performance.now()*options.spin/1000:-options.h||0, t2=options.p||0;
           var ct = Math.cos(t), st= Math.sin(t), ct2 = Math.cos(t2), st2 = Math.sin(t2), xx=options.posx||0, y=options.posy||0, z=options.posz||0, zoom=options.z||5;
-          if (tot==5) return [ct,st*-st2,st*ct2,0,0,ct2,st2,0,-st,ct*-st2,ct*ct2,0,xx*ct+z*-st,y*ct2+(xx*st+z*ct)*-st2,y*st2+xx*st+z*ct*ct2+zoom,1];
+          if (tot==5) return [ct,st*-st2,st*ct2,0,0,ct2,st2,0,-st,ct*-st2,ct*ct2,0,xx*ct+z*-st,y*ct2+(xx*st+z*ct)*-st2,y*st2+xx*st+z*ct*ct2-zoom,1];
           x=x.Normalized; var y=x.Mul(x.Dual),X=x.e23,Y=-x.e13,Z=-x.e12,W=x.s;
           var xx = X*X, xy = X*Y, xz = X*Z, xw = X*W, yy = Y*Y, yz = Y*Z, yw = Y*W, zz = Z*Z, zw = Z*W;
-          var mtx = [ 1-2*(yy+zz), 2*(xy+zw), 2*(xz-yw), 0, 2*(xy-zw), 1-2*(xx+zz), 2*(yz+xw), 0, 2*(xz+yw), 2*(yz-xw), 1-2*(xx+yy), 0, -2*y.e23, -2*y.e13, 2*y.e12+(iscam?5:0), 1];
+          var mtx = [ 1-2*(yy+zz), 2*(xy+zw), 2*(xz-yw), 0, 2*(xy-zw), 1-2*(xx+zz), 2*(yz+xw), 0, 2*(xz+yw), 2*(yz-xw), 1-2*(xx+yy), 0, -2*y.e23, -2*y.e13, 2*y.e12-zoom, 1];
           return mtx;
         }
       // Render the given vertices. (autocreates/destroys vertex array if not supplied).
         var draw=function(p, tp, vtx, color, color2, ratio, texc, va, cbuf, allowcull=true){
           gl.useProgram(p); gl.uniformMatrix4fv(gl.getUniformLocation(p, "mv"),false,M);
-          gl.uniformMatrix4fv(gl.getUniformLocation(p, "p"),false, [5,0,0,0,0,5*(ratio||2),0,0,0,0,1,2,0,0,-1,0])
+          gl.uniformMatrix4fv(gl.getUniformLocation(p, "p"),false, projectionMatrix(ratio||2));
           gl.uniform3fv(gl.getUniformLocation(p, "color"),new Float32Array(color));
           gl.uniform3fv(gl.getUniformLocation(p, "color2"),new Float32Array(color2));
           //if (texc) gl.uniform1i(gl.getAttribLocation(p, "texc"),0);
@@ -1270,17 +1287,17 @@
                  void main() { gl_PointSize=12.0; Pos=mv*position; gl_Position = p*Pos; }`,
                 `#extension GL_OES_standard_derivatives : enable
                  precision highp float; uniform vec3 color; uniform vec3 color2; varying vec4 Pos;
-                 void main() { vec3 ldir = normalize(Pos.xyz - vec3(2.0,2.0,-4.0));
+                 void main() { vec3 ldir = normalize(vec3(2.0,2.0,4.0) - Pos.xyz);
                  vec3 normal = normalize(cross(dFdx(Pos.xyz), dFdy(Pos.xyz))); float l=dot(normal,ldir);
-                 vec3 E = normalize(-Pos.xyz); vec3 R = normalize(reflect(ldir,normal));
+                 vec3 E = normalize(-Pos.xyz); vec3 R = normalize(reflect(-ldir,normal));
                  gl_FragColor = vec4(max(0.0,l)*color+vec3(0.5*pow(max(dot(R,E),0.0),20.0))+color2, 1.0);  }`);
         var programSphere = compile(`attribute vec4 position; varying vec4 Pos; varying vec3 N; uniform mat4 mv; uniform mat4 p;
-                 void main() { gl_PointSize=12.0; Pos=mv*position; N = normalize(position.xzy); gl_Position = p*Pos; }`,
+                 void main() { gl_PointSize=12.0; Pos=mv*position; N = normalize(mat3(mv)*position.xyz); gl_Position = p*Pos; }`,
                 `#extension GL_OES_standard_derivatives : enable
                  precision highp float; uniform vec3 color; uniform vec3 color2; varying vec4 Pos; varying vec3 N;
-                 void main() { vec3 ldir = normalize(Pos.xyz - vec3(2.0,2.0,-4.0));
+                 void main() { vec3 ldir = normalize(vec3(2.0,2.0,4.0) - Pos.xyz);
                  vec3 normal = N; float l=dot(normal,ldir);
-                 vec3 E = normalize(-Pos.xyz); vec3 R = normalize(reflect(ldir,normal));
+                 vec3 E = normalize(-Pos.xyz); vec3 R = normalize(reflect(-ldir,normal));
                  gl_FragColor = vec4(max(0.0,l)*color+vec3(0.5*pow(max(dot(R,E),0.0),20.0))+color2, 1.0);  }`);
         var programPoint = compile(`attribute vec4 position; varying vec4 Pos; uniform mat4 mv; uniform mat4 p;
                  void main() { gl_PointSize=${((options.pointRadius||1)*(options.devicePixelRatio||devicePixelRatio||1)*8.0).toFixed(2)}; Pos=mv*position; gl_Position = p*Pos; }`,
@@ -1325,9 +1342,9 @@
                  void main() { gl_PointSize=6.0; Pos=mv*position; gl_Position = p*Pos; Col=col; }`,
                 `#extension GL_OES_standard_derivatives : enable
                  precision highp float; uniform vec3 color; uniform vec3 color2; varying vec4 Pos; varying vec3 Col;
-                 void main() { vec3 ldir = normalize(Pos.xyz - vec3(1.0,1.0,2.0));
+                 void main() { vec3 ldir = normalize(vec3(1.0,1.0,2.0) - Pos.xyz);
                  vec3 normal = normalize(cross(dFdx(Pos.xyz), dFdy(Pos.xyz))); float l=dot(normal,ldir);
-                 vec3 E = normalize(-Pos.xyz); vec3 R = normalize(reflect(ldir,normal));
+                 vec3 E = normalize(-Pos.xyz); vec3 R = normalize(reflect(-ldir,normal));
                  gl_FragColor = vec4(max(0.3,l)*Col+vec3(pow(max(dot(R,E),0.0),20.0))+color2, 1.0); ${options.shader||''}  }`);
         var programmot = compile(`attribute vec4 position; attribute vec2 texc; attribute vec3 col; varying vec3 Col; varying vec4 Pos; uniform mat4 mv; uniform mat4 p; uniform vec3 color2;
                  void main() { gl_PointSize=2.0; float blend=fract(color2.x+texc.r)*0.5; Pos=mv*(position*(1.0-blend) + (blend)*vec4(col,1.0)); gl_Position = p*Pos; Col=vec3(length(col-position.xyz)*1.); gl_PointSize = 8.0 -  Col.x; Col.y=sin(blend*2.*3.1415); }`,
@@ -1345,8 +1362,9 @@
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       // Font rendering program. Renders billboarded fonts, transforms offset passed as color2.
+      // Scale view-space XY offsets by -view.z so glyphs keep their screen size without mirroring.
         var program2 = compile(`attribute vec4 position; attribute vec2 texc; varying vec2 tex; varying vec4 Pos; uniform mat4 mv; uniform mat4 p; uniform vec3 color2;
-                 void main() { tex=texc; gl_PointSize=6.0; vec4 o=mv*vec4(color2,0.0); Pos=(-1.0/(o.z-mv[3][2]))*position+vec4(mv[3][0],mv[3][1],mv[3][2],0.0)+o; gl_Position = p*Pos; }`,
+                 void main() { tex=texc; gl_PointSize=6.0; Pos=mv*vec4(color2,1.0); Pos.xy+=position.xy*(-Pos.z)*0.04; gl_Position=p*Pos; }`,
                 `precision highp float; uniform vec3 color; varying vec4 Pos; varying vec2 tex;
                  uniform sampler2D texm; void main() { vec4 c = texture2D(texm,tex); if (c.a<0.01) discard; gl_FragColor = vec4(color,c.a);}`);
       // Helpers for line drawing. Convert line segments to triangles.
@@ -1479,8 +1497,9 @@
                   for (var j=0; j<W+1; j++) for (var k=0; k<H; k++) {
                     pnts.push( [S(2*pi*j/W)*S(pi*k/(H-1)), C(2*pi*j/W)*S(pi*k/(H-1)), C(pi*k/(H-1))]);
                     if (j && k) {
-                      tris.push.apply(tris, pnts[(j-1)*H+k-1]);tris.push.apply(tris, pnts[(j-1)*H+k]);tris.push.apply(tris, pnts[j*H+k-1]);
-                      tris.push.apply(tris, pnts[j*H+k-1]); tris.push.apply(tris, pnts[(j-1)*H+k]); tris.push.apply(tris, pnts[j*H+k]);
+                      // Outward CCW faces for the right-handed view and back-face culling.
+                      tris.push.apply(tris, pnts[(j-1)*H+k-1]);tris.push.apply(tris, pnts[j*H+k-1]);tris.push.apply(tris, pnts[(j-1)*H+k]);
+                      tris.push.apply(tris, pnts[j*H+k-1]); tris.push.apply(tris, pnts[j*H+k]); tris.push.apply(tris, pnts[(j-1)*H+k]);
                   }}
                   sphere = { va : createVA(tris,undefined) }; sphere.va.tcount = tris.length/3;
                 }
@@ -1575,9 +1594,8 @@
                   if (options.htmlText) {
                     if (!x['_'+i]) { console.log('creating div'); Object.defineProperty(x,'_'+i, {value: document.body.appendChild(document.createElement('div')), enumerable:false }) };
                     var rc = canvas.getBoundingClientRect(), div = x['_'+i];
-                    var pos2 = Element.Mul( [[M[0],M[4],M[8],M[12]],[M[1],M[5],M[9],M[13]],[M[2],M[6],M[10],M[14]],[M[3],M[7],M[11],M[15]]], [...lastpos,1]).map(x=>x.s);
-                    pos2 = Element.Mul( [[5,0,0,0],[0,5*(r||2),0,0],[0,0,1,-1],[0,0,2,0]], pos2).map(x=>x.s).map((x,i,a)=>x/a[3]);
-                    Object.assign(div.style,{position:'fixed',pointerEvents:'none',left:rc.left + (rc.right-rc.left)*(pos2[0]/2+0.5),top: rc.top + (rc.bottom-rc.top)*(-pos2[1]/2+0.5) - 20});
+                    var pos2 = worldToNDC(lastpos,M,r);
+                    Object.assign(div.style,{position:'fixed',pointerEvents:'none',visibility:pos2[3]>0 && Math.abs(pos2[2])<=1?'visible':'hidden',left:(rc.left + (rc.right-rc.left)*(pos2[0]/2+0.5))+'px',top:(rc.top + (rc.bottom-rc.top)*(-pos2[1]/2+0.5) - 20)+'px'});
                     if (div.last != e) { div.innerHTML = e; div.last = e; if (self.renderMathInElement) self.renderMathInElement(div); }
                   } else { 
                     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
@@ -1662,11 +1680,10 @@
                 e.va = createVA(et,undefined,e.idx,e.color?new Float32Array(e.color):undefined); e.va.tcount = (e.idx && e.idx.length)?e.idx.length:e.data.length*3;
               }
               // render the vertex array.
-              var M5 = Element.Scalar(1).Add(Element.Coeff(7,2.5));
               if (e.transform) {
                   // Model transforms follow the same PGA-to-world mapping as vertices.
                   var M1 = pgaMotorToWorldMatrix(e.transform);
-                  var M2 = mtx(M5.Mul(options.camera), false);
+                  var M2 = mtx(options.camera);
                   M = Array(16).fill(0);
                   for (var ii=0; ii<4; ++ii) for (var jj=0; jj<4; ++jj) for (var kk=0; kk<4; ++kk) M[ii*4+kk] += M1[ii*4+jj] * M2[jj*4+kk];
                }
@@ -1702,9 +1719,8 @@
                 if (options.htmlText) { 
                   if (!canvas['_'+i]) { console.log('creating div'); Object.defineProperty(canvas,'_'+i, {value: document.body.appendChild(document.createElement('div')), enumerable:false }) };
                   var rc = canvas.getBoundingClientRect(), div = canvas['_'+i];
-                  var pos2 = Element.Mul( [[M[0],M[4],M[8],M[12]],[M[1],M[5],M[9],M[13]],[M[2],M[6],M[10],M[14]],[M[3],M[7],M[11],M[15]]], [...lastpos,1]).map(x=>x.s);
-                  pos2 = Element.Mul( [[5,0,0,0],[0,5*(r||2),0,0],[0,0,1,-1],[0,0,2,0]], pos2).map(x=>x.s).map((x,i,a)=>x/a[3]);
-                  Object.assign(div.style,{position:'fixed',pointerEvents:'none',left:rc.left + (rc.right-rc.left)*(pos2[0]/2+0.5),top: rc.top + (rc.bottom-rc.top)*(-pos2[1]/2+0.5) - 20});
+                  var pos2 = worldToNDC(lastpos,M,r);
+                  Object.assign(div.style,{position:'fixed',pointerEvents:'none',visibility:pos2[3]>0 && Math.abs(pos2[2])<=1?'visible':'hidden',left:(rc.left + (rc.right-rc.left)*(pos2[0]/2+0.5))+'px',top:(rc.top + (rc.bottom-rc.top)*(-pos2[1]/2+0.5) - 20)+'px'});
                   if (div.last != e) { div.innerHTML = e; div.last = e; if (self.renderMathInElement) self.renderMathInElement(div,{output:'html'});  }
                 } else { 
                   gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.disable(gl.DEPTH_TEST);
@@ -1727,18 +1743,13 @@
         }
         // Basic mouse interactivity. needs more love.
         var sel=-1; canvas.oncontextmenu = canvas.onmousedown = (e)=>{e.preventDefault(); e.stopPropagation();  if (e.detail===0) return;
-          var rc = canvas.getBoundingClientRect(), mx=(e.x-rc.left)/(rc.right-rc.left)*2-1, my=((e.y-rc.top)/(rc.bottom-rc.top)*4-2)*canvas.height/canvas.width;
+          var rc = canvas.getBoundingClientRect(), mx=(e.x-rc.left)/(rc.right-rc.left)*2-1, my=1-(e.y-rc.top)/(rc.bottom-rc.top)*2;
           sel = (e.button==2)?-3:-2; canvas.value.forEach((x,i)=>{
-            if (tot != 5) { if (x[14]) {
-              var pos2 = Element.Mul( [[M[0],M[4],M[8],M[12]],[M[1],M[5],M[9],M[13]],[M[2],M[6],M[10],M[14]],[M[3],M[7],M[11],M[15]]], [...pgaPointToWorld(x),1]).map(x=>x.s);
-              pos2 = Element.Mul( [[5,0,0,0],[0,-5*(2),0,0],[0,0,1,-1],[0,0,2,0]], pos2).map(x=>x.s).map((x,i,a)=>x/a[3]);
-              if ((mx-pos2[0])**2 + ((my)-pos2[1])**2 < 0.001) sel=i;
-            }} else {
-              x = interprete(x); if (x.tp==1) {
-                var pos2 = Element.Mul( [[M[0],M[4],M[8],M[12]],[M[1],M[5],M[9],M[13]],[M[2],M[6],M[10],M[14]],[M[3],M[7],M[11],M[15]]], [...x.pos,1]).map(x=>x.s);
-                pos2 = Element.Mul( [[5,0,0,0],[0,5*(r||2),0,0],[0,0,1,-1],[0,0,2,0]], pos2).map(x=>x.s).map((x,i,a)=>x/a[3]);
-                if ((mx-pos2[0])**2 + ((-my)-pos2[1])**2 < 0.01) sel=i;
-              }
+            var point = tot==5?interprete(x):
+              (x instanceof Element && x[14]?{tp:1,pos:pgaPointToWorld(x)}:{tp:0});
+            if (point.tp==1) {
+              var ratio=canvas.width/canvas.height, pos2=worldToNDC(point.pos,M,ratio);
+              if (pos2[3]>0 && (mx-pos2[0])**2 + ((my-pos2[1])/ratio)**2 < (tot==5?0.01:0.001)) sel=i;
             }
           });
           canvas.onwheel=e=>{e.preventDefault(); e.stopPropagation(); options.z = (options.z||5)+e.deltaY/100; if (!options.animate) requestAnimationFrame(canvas.update.bind(canvas,f,options));}
@@ -1754,17 +1765,18 @@
             if (sel==-2) { options.h = (options.h||0)+(options.conformal?-1:1)*mx/2; options.p = Math.max(-Math.PI/2,Math.min(Math.PI/2, (options.p||0)-my/2)); if (options.camera) options.camera.set( ( Element.Bivector(0,0,0,0,0,options.p).Exp() ).Mul( Element.Bivector(0,0,0,0,options.h,0).Exp() )); if (!options.animate) requestAnimationFrame(canvas.update.bind(canvas,f,options)); return; };
             if (sel==-3) { var ct = Math.cos(options.h||0), st= Math.sin(options.h||0), ct2 = Math.cos(options.p||0), st2 = Math.sin(options.p||0);
               if (e.shiftKey) { options.posy = (options.posy||0)+my; } else { options.posx = (options.posx||0)+mx*ct+my*st; options.posz = (options.posz||0)+mx*-st+my*ct*ct2; } if (!options.animate) requestAnimationFrame(canvas.update.bind(canvas,f,options));return; }; if (sel < 0) return;
-            if (tot==5) { 
-               x.pos[0] += (e.buttons!=2)?Math.cos((options.h||0))*mx:Math.sin(-(options.h||0))*-my; x.pos[1]+=(e.buttons!=2)?-my:0; x.pos[2]+=(e.buttons!=2)?Math.sin((options.h||0))*mx:Math.cos(-(options.h||0))*-my;
-               canvas.value[sel].set(Element.Mul(ni,(x.pos[0]**2+x.pos[1]**2+x.pos[2]**2)*0.5).Sub(no)); canvas.value[sel].set(x.pos,1); }
-            else if (x) { 
+            if (x) {
                var [cw,ch] = [rc.width, rc.height];
-               var ox = (1/(options.scale || 1)) * ((e.offsetX / cw) - 0.5);
-               var oy = (1/(options.scale || 1)) * ((e.offsetY / ch) - 0.5) * (ch/cw);
-               var tb  = Element.sw(options.camera,canvas.value[sel]);
-               // offsetY grows downward in screen space; depth uses world Z, not its PGA coefficient.
-               var z = -(pgaPointToWorld(tb)[2]+5)/5*4; tb.e023 = ox*z*tb.e123; tb.e013 = oy*z*tb.e123;
-               canvas.value[sel].set(Element.sw(options.camera.Reverse, tb));
+               var depth = worldToView(x.pos,M)[2], projection=projectionMatrix(canvas.width/canvas.height);
+               // Screen Y grows downward. Invert the shader's perspective projection at fixed view depth.
+               var targetView=[(2*e.offsetX/cw-1)*projection[11]*depth/projection[0],
+                               (1-2*e.offsetY/ch)*projection[11]*depth/projection[5],depth];
+               var targetWorld=viewToWorld(targetView,M);
+               if (tot==5) {
+                 targetWorld=targetWorld.map(v=>v/(options.scale||1));
+                 canvas.value[sel].set(ni.Scale(targetWorld.reduce((sum,v)=>sum+v*v,0)*0.5).Sub(no));
+                 canvas.value[sel].set(targetWorld,1);
+               } else canvas.value[sel].set(worldToPgaPoint(targetWorld).Scale(canvas.value[sel][14]));
             }
             if (!options.animate) requestAnimationFrame(canvas.update.bind(canvas,f,options));
           }

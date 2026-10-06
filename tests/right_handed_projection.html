@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Right-handed WebGL projection checks</title>
+  <script src="../ganja.js"></script>
+  <style>
+    body { font: 16px sans-serif; margin: 24px; }
+    main { display: flex; flex-wrap: wrap; gap: 24px; }
+    canvas { display: block; }
+    h2 { font-size: 18px; }
+  </style>
+</head>
+<body>
+  <h1>Right-handed WebGL projection checks</h1>
+  <p>With an identity camera, blue at Z=+1 must cover red at Z=-1. Green at Z=+6 is behind the camera.</p>
+  <main></main>
+  <pre id="result">Running…</pre>
+  <script>
+    const PGA=Algebra(3,0,1), CGA=Algebra(4,1);
+    const pgaPoint=(x,y,z)=>PGA.Vector(1,x,y,z).Dual;
+    const ni=CGA.Vector(0,0,0,1,1), no=CGA.Vector(0,0,0,-0.5,0.5);
+    const cgaPoint=(x,y,z)=>no.Add(CGA.Vector(x,y,z,0,0)).Add(ni.Scale((x*x+y*y+z*z)/2));
+    const defaults={gl:true,width:'240px',height:'240px',devicePixelRatio:1,h:0,p:0,pointRadius:8};
+    function panel(title,algebra,items,options={}) {
+      const section=document.createElement('section'), heading=document.createElement('h2');
+      heading.textContent=title; section.appendChild(heading);
+      const canvas=algebra.graph(items,{...defaults,...options});
+      section.appendChild(canvas); document.querySelector('main').appendChild(section);
+      return canvas;
+    }
+    const layers=point=>[0x0000ff,point(0,0,1),0xff0000,point(0,0,-1),0x00ff00,point(0,0,6)];
+    const pga=panel('PGA depth',PGA,layers(pgaPoint));
+    const cga=panel('CGA depth',CGA,layers(cgaPoint),{conformal:true});
+    const sphere=panel('CGA sphere front surface',CGA,
+      [0x0000ff,no.Sub(ni.Scale(0.5)),0xff0000,cgaPoint(0,0,0)],{conformal:true});
+    const triangle={data:[pgaPoint(-0.7,-0.7,0),pgaPoint(0.7,-0.7,0),pgaPoint(0,0.7,0)],
+      idx:[0,1,2],color:[1,0,0,1,0,0,1,0,0],transform:PGA.Scalar(1)};
+    const face=panel('CCW front face',PGA,[triangle],{cull:true});
+    const drag=panel('Rotated camera: drag',PGA,[0x0000ff,pgaPoint(1,0,0)],{h:0.55,p:-0.3,pointRadius:3});
+    function center(canvas) {
+      const gl=canvas.getContext('webgl'), pixel=new Uint8Array(4);
+      gl.readPixels(canvas.width/2,canvas.height/2,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+      return Array.from(pixel);
+    }
+    function blueCenter(canvas) {
+      const gl=canvas.getContext('webgl'), pixels=new Uint8Array(canvas.width*canvas.height*4);
+      gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+      let x=0,y=0,n=0;
+      for(let i=0;i<pixels.length;i+=4) if(pixels[i]<50 && pixels[i+1]<50 && pixels[i+2]>200) {
+        x+=(i/4)%canvas.width+0.5; y+=canvas.height-Math.floor(i/4/canvas.width)-0.5; n++;
+      }
+      if(!n) throw Error('Blue point is missing');
+      return [x/n,y/n];
+    }
+    requestAnimationFrame(()=>{
+      const results={};
+      try {
+        for(const [name,canvas,point] of [['PGA',pga,pgaPoint],['CGA',cga,cgaPoint]]) {
+          const pixel=center(canvas);
+          if(pixel[2]<200 || pixel[0]>50) throw Error(name+' depth order: '+pixel);
+          canvas.update([0xff0000,point(0,0,-1),0x0000ff,point(0,0,1)]);
+          const reversed=center(canvas);
+          if(reversed[2]<200 || reversed[0]>50) throw Error(name+' depends on draw order');
+          results[name]={frontPixel:pixel,reverseOrderPixel:reversed};
+        }
+        const spherePixel=center(sphere);
+        if(spherePixel[2]<spherePixel[0]+30) throw Error('Sphere front surface did not occlude its center: '+spherePixel);
+        results.sphere=spherePixel;
+        const facePixel=center(face);
+        if(facePixel[0]<facePixel[1]+30) throw Error('Front face winding: '+facePixel);
+        face.update([{...triangle,idx:[0,2,1],va:undefined}]);
+        const backPixel=center(face);
+        if(backPixel.slice(0,3).some(v=>Math.abs(v-240)>1)) throw Error('Back face was not culled: '+backPixel);
+        face.update([triangle]);
+        results.faces={front:facePixel,back:backPixel};
+        const before=blueCenter(drag), rect=drag.getBoundingClientRect();
+        drag.dispatchEvent(new MouseEvent('mousedown',{detail:1,button:0,buttons:1,
+          clientX:rect.left+before[0],clientY:rect.top+before[1]}));
+        drag.dispatchEvent(new MouseEvent('mousemove',{button:0,buttons:1,
+          clientX:rect.left+before[0]+15,clientY:rect.top+before[1]+10}));
+        drag.update(drag.value);
+        const after=blueCenter(drag), delta=after.map((v,i)=>v-before[i]);
+        if(Math.abs(delta[0]-15)>1 || Math.abs(delta[1]-10)>1) throw Error('Drag pixels: '+delta);
+        results.dragDelta=delta;
+        results.status='PASS';
+      } catch(error) { results.status='FAIL'; results.error=error.message; }
+      document.getElementById('result').textContent=JSON.stringify(results,null,2);
+      document.body.dataset.status=results.status;
+    });
+  </script>
+</body>
+</html>
