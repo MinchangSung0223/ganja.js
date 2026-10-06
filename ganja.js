@@ -1742,14 +1742,19 @@
           }
         }
         // Basic mouse interactivity. needs more love.
-        var sel=-1; canvas.oncontextmenu = canvas.onmousedown = (e)=>{e.preventDefault(); e.stopPropagation();  if (e.detail===0) return;
+        var sel=-1, grabOffset=[0,0]; canvas.oncontextmenu = canvas.onmousedown = (e)=>{e.preventDefault(); e.stopPropagation();  if (e.detail===0) return;
           var rc = canvas.getBoundingClientRect(), mx=(e.x-rc.left)/(rc.right-rc.left)*2-1, my=1-(e.y-rc.top)/(rc.bottom-rc.top)*2;
           sel = (e.button==2)?-3:-2; canvas.value.forEach((x,i)=>{
             var point = tot==5?interprete(x):
               (x instanceof Element && x[14]?{tp:1,pos:pgaPointToWorld(x)}:{tp:0});
             if (point.tp==1) {
               var ratio=canvas.width/canvas.height, pos2=worldToNDC(point.pos,M,ratio);
-              if (pos2[3]>0 && (mx-pos2[0])**2 + ((my-pos2[1])/ratio)**2 < (tot==5?0.01:0.001)) sel=i;
+              if (pos2[3]>0 && (mx-pos2[0])**2 + ((my-pos2[1])/ratio)**2 < (tot==5?0.01:0.001)) {
+                sel=i;
+                // Keep the screen-space offset where the point was grabbed;
+                // dragging its edge must not snap its center to the pointer.
+                grabOffset=[mx-pos2[0],my-pos2[1]];
+              }
             }
           });
           canvas.onwheel=e=>{e.preventDefault(); e.stopPropagation(); options.z = (options.z||5)+e.deltaY/100; if (!options.animate) requestAnimationFrame(canvas.update.bind(canvas,f,options));}
@@ -1769,8 +1774,9 @@
                var [cw,ch] = [rc.width, rc.height];
                var depth = worldToView(x.pos,M)[2], projection=projectionMatrix(canvas.width/canvas.height);
                // Screen Y grows downward. Invert the shader's perspective projection at fixed view depth.
-               var targetView=[(2*e.offsetX/cw-1)*projection[11]*depth/projection[0],
-                               (1-2*e.offsetY/ch)*projection[11]*depth/projection[5],depth];
+               // Use the same client coordinates as picking (offsetX/Y can round).
+               var targetView=[(2*(e.x-rc.left)/cw-1-grabOffset[0])*projection[11]*depth/projection[0],
+                               (1-2*(e.y-rc.top)/ch-grabOffset[1])*projection[11]*depth/projection[5],depth];
                var targetWorld=viewToWorld(targetView,M);
                if (tot==5) {
                  targetWorld=targetWorld.map(v=>v/(options.scale||1));

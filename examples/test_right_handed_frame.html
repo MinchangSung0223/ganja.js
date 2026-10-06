@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
 <head>
   <meta charset="utf-8">
-  <title>PGA3D right-handed frame</title>
+  <title>PGA3D 오른손 좌표계 · 점 드래그</title>
   <script src="../ganja.js"></script>
   <style>
     body { font: 16px sans-serif; margin: 24px; background: #f4f4f4; }
@@ -10,20 +10,29 @@
   </style>
 </head>
 <body>
-  <h1>PGA3D right-handed frame</h1>
-  <p>Drag the background to rotate the camera. Drag a point to check editing. X × Y = Z.</p>
+  <h1>PGA3D 오른손 좌표계 · 점 드래그</h1>
+  <p>배경을 끌면 시점이 회전합니다. 색깔 점을 끌면 점이 화면과 평행한 평면에서 이동합니다.</p>
+  <p>초기 축은 X × Y = Z입니다. 끝점을 옮기면 축 모양과 표시 좌표도 함께 바뀝니다.</p>
+  <button id="reset">점 위치 초기화</button>
   <div id="frame"></div>
   <script>
     const PGA = Algebra(3,0,1);
     // Use the same dual point convention as the PGA examples.
     const point = (x,y,z) => PGA.Vector(1,x,y,z).Dual;
     const O = point(0,0,0), X = point(1,0,0), Y = point(0,1,0), Z = point(0,0,1);
-    document.getElementById('frame').appendChild(PGA.graph(() => [
+    const label = (name,p) => name+' ('+[-p[13]/p[14],p[12]/p[14],-p[11]/p[14]].map(v=>v.toFixed(2)).join(', ')+')';
+    const scene=() => [
       0x444444, O, 'O',
-      0xff3333, [O,X], X, '+X (1,0,0)',
-      0x22aa22, [O,Y], Y, '+Y (0,1,0)',
-      0x3366ff, [O,Z], Z, '+Z (0,0,1)'
-    ], {gl:true, h:0.55, p:-0.3, lineWidth:4, pointRadius:1.5}));
+      0xff3333, [O,X], X, label('X',X),
+      0x22aa22, [O,Y], Y, label('Y',Y),
+      0x3366ff, [O,Z], Z, label('Z',Z)
+    ];
+    const canvas=PGA.graph(scene, {gl:true, h:0.55, p:-0.3, lineWidth:4, pointRadius:1.5});
+    document.getElementById('frame').appendChild(canvas);
+    document.getElementById('reset').onclick=()=>{
+      [O,X,Y,Z].forEach((p,i)=>p.set(point(+(i===1),+(i===2),+(i===3))));
+      canvas.update(scene);
+    };
   </script>
 </body>
 </html>

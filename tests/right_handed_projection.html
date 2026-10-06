@@ -76,9 +76,9 @@
         results.faces={front:facePixel,back:backPixel};
         const before=blueCenter(drag), rect=drag.getBoundingClientRect();
         drag.dispatchEvent(new MouseEvent('mousedown',{detail:1,button:0,buttons:1,
-          clientX:rect.left+before[0],clientY:rect.top+before[1]}));
+          clientX:rect.left+before[0]+3,clientY:rect.top+before[1]-2}));
         drag.dispatchEvent(new MouseEvent('mousemove',{button:0,buttons:1,
-          clientX:rect.left+before[0]+15,clientY:rect.top+before[1]+10}));
+          clientX:rect.left+before[0]+3+15,clientY:rect.top+before[1]-2+10}));
         drag.update(drag.value);
         const after=blueCenter(drag), delta=after.map((v,i)=>v-before[i]);
         if(Math.abs(delta[0]-15)>1 || Math.abs(delta[1]-10)>1) throw Error('Drag pixels: '+delta);

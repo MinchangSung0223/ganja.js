@@ -100,7 +100,7 @@ const dragged=point(1,0,0), rotatedInteractive=graph([dragged],PGA,{h:0.55,p:-0.
 const before=projected([1,0,0],rotatedInteractive.draws[0]);
 const pixelX=250*(before[0]+1), pixelY=250*(1-before[1]);
 rotatedInteractive.canvas.onmousedown({detail:1,button:0,x:pixelX,y:pixelY,preventDefault(){},stopPropagation(){}});
-rotatedInteractive.canvas.onmousemove({movementX:25,movementY:0,offsetX:pixelX+25,offsetY:pixelY,buttons:1});
+rotatedInteractive.canvas.onmousemove({movementX:25,movementY:0,x:pixelX+25,y:pixelY,buttons:1});
 const after=projected(world(dragged),rotatedInteractive.draws[0]);
 near(after.slice(0,2),[before[0]+0.1,before[1]]);
 near(after.slice(2),before.slice(2));
@@ -110,15 +110,15 @@ near(transformedView.matrix,rotatedInteractive.draws[0].matrix);
 
 const interactive=graph([X]);
 interactive.canvas.onmousedown({detail:1,button:0,x:375,y:250,preventDefault(){},stopPropagation(){}});
-interactive.canvas.onmousemove({movementX:25,movementY:0,offsetX:400,offsetY:250,buttons:1});
+interactive.canvas.onmousemove({movementX:25,movementY:0,x:400,y:250,buttons:1});
 assert.ok(world(X)[0]>1, `dragged X did not move right: ${world(X)}`);
 const interactiveY=graph([point(0,1,0)]);
 interactiveY.canvas.onmousedown({detail:1,button:0,x:250,y:125,preventDefault(){},stopPropagation(){}});
-interactiveY.canvas.onmousemove({movementX:0,movementY:25,offsetX:250,offsetY:150,buttons:1});
+interactiveY.canvas.onmousemove({movementX:0,movementY:25,x:250,y:150,buttons:1});
 assert.ok(world(interactiveY.canvas.value[0])[1]<1, 'dragging down must reduce world Y');
 const interactiveZ=graph([point(0,0,1)]);
 interactiveZ.canvas.onmousedown({detail:1,button:0,x:250,y:250,preventDefault(){},stopPropagation(){}});
-interactiveZ.canvas.onmousemove({movementX:50,movementY:0,offsetX:300,offsetY:250,buttons:1});
+interactiveZ.canvas.onmousemove({movementX:50,movementY:0,x:300,y:250,buttons:1});
 near(world(interactiveZ.canvas.value[0]),[0.32,0,1]);
 const label=graph([point(1,0,0),'X'],PGA,{htmlText:true});
 assert.ok(parseFloat(label.nodes[0].style.left)>250, 'HTML text anchor follows positive X');
@@ -159,8 +159,32 @@ const cgaInteractive=graph([cgaDragged],CGA,{conformal:true,h:0.4,p:-0.2,scale:2
 const cgaBefore=projected([2,0,0],cgaInteractive.draws[0]);
 const cx=250*(cgaBefore[0]+1), cy=250*(1-cgaBefore[1]);
 cgaInteractive.canvas.onmousedown({detail:1,button:0,x:cx,y:cy,preventDefault(){},stopPropagation(){}});
-cgaInteractive.canvas.onmousemove({movementX:15,movementY:20,offsetX:cx+15,offsetY:cy+20,buttons:1});
+cgaInteractive.canvas.onmousemove({movementX:15,movementY:20,x:cx+15,y:cy+20,buttons:1});
 const cgaAfter=projected(Array.from(cgaDragged.slice(1,4),v=>2*v),cgaInteractive.draws[0]);
 near(cgaAfter.slice(0,2),[cgaBefore[0]+0.06,cgaBefore[1]-0.08]);
 near(cgaAfter.slice(2),cgaBefore.slice(2));
+// Grabbing the edge of a point must preserve the grab offset, including at a
+// rotated view, non-square CSS size, and a scaled backing buffer (high DPI).
+for (const conformal of [false,true]) {
+  const position=[0.6,0.2,0.3], weight=2;
+  const p=conformal?cgaPointAt(position):point(...position,weight);
+  const g=graph([p],conformal?CGA:PGA,{conformal,h:0.55,p:-0.3,scale:conformal?2:1},true);
+  const rect={left:37,top:83,width:800,height:480,right:837,bottom:563};
+  g.canvas.getBoundingClientRect=()=>rect;
+  global.getComputedStyle=()=>({width:'800px',height:'480px'});
+  g.canvas.options.devicePixelRatio=2;
+  g.canvas.update(g.canvas.value);
+  const draw=g.draws[g.draws.length-1], scale=conformal?2:1;
+  const initial=projected(position.map(v=>v*scale),draw);
+  const px=(initial[0]+1)*rect.width/2, py=(1-initial[1])*rect.height/2;
+  const grab=[4,-3];
+  g.canvas.onmousedown({detail:1,button:0,x:rect.left+px+grab[0],y:rect.top+py+grab[1],preventDefault(){},stopPropagation(){}});
+  for (const delta of [[0,0],[21,13],[-10,-18],[0,0]]) {
+    g.canvas.onmousemove({x:rect.left+px+grab[0]+delta[0],y:rect.top+py+grab[1]+delta[1],buttons:1});
+    const moved=conformal?Array.from(p.slice(1,4),v=>v*scale):world(p);
+    const result=projected(moved,draw);
+    near(result,[initial[0]+2*delta[0]/rect.width,initial[1]-2*delta[1]/rect.height,...initial.slice(2)]);
+  }
+  if (!conformal) near([p[14]],[weight]);
+}
 console.log('PGA point, line, triangle, mesh, picking, dragging, translations, rotation, and CGA coordinates: pass');
