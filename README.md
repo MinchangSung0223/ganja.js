@@ -274,6 +274,18 @@ canvas = Algebra(4,1,()=>this.graph([.5e4-.5e5],{conformal:true,gl:true}); // Th
 ```
 Again, many more examples can be found at [the coffeeshop](https://enkimute.github.io/ganja.js/examples/coffeeshop.html).
 
+For 3D CGA WebGL graphs, set `upAxis: 'z'` to orbit with world Z pointing up.
+`h` controls azimuth around Z and `p` controls elevation, in radians. This changes
+the camera only; world coordinates and right-handed orientation are preserved.
+The default remains Y-up. The GAV example selects Z-up:
+
+```javascript
+Algebra(4,1).graph(points, {
+  gl: true, conformal: true, upAxis: 'z',
+  h: Math.PI/4, p: Math.PI/6, z: 8
+});
+```
+
 ### The describe function.
 
 To display the basis blade names, metric, Cayley table and more, use the

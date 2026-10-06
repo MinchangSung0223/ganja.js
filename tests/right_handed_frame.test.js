@@ -165,10 +165,10 @@ near(cgaAfter.slice(0,2),[cgaBefore[0]+0.06,cgaBefore[1]-0.08]);
 near(cgaAfter.slice(2),cgaBefore.slice(2));
 // Grabbing the edge of a point must preserve the grab offset, including at a
 // rotated view, non-square CSS size, and a scaled backing buffer (high DPI).
-for (const conformal of [false,true]) {
+for (const conformal of [false,true]) for (const upAxis of ['y','z']) {
   const position=[0.6,0.2,0.3], weight=2;
   const p=conformal?cgaPointAt(position):point(...position,weight);
-  const g=graph([p],conformal?CGA:PGA,{conformal,h:0.55,p:-0.3,scale:conformal?2:1},true);
+  const g=graph([p],conformal?CGA:PGA,{conformal,upAxis,h:0.55,p:-0.3,scale:conformal?2:1},true);
   const rect={left:37,top:83,width:800,height:480,right:837,bottom:563};
   g.canvas.getBoundingClientRect=()=>rect;
   global.getComputedStyle=()=>({width:'800px',height:'480px'});
@@ -216,10 +216,34 @@ for (const scale of [1,2]) for (const motorScale of [1,2]) {
 }
 // Screen right, screen up, and toward the viewer form a right-handed frame.
 // Check the actual CGA shader matrices, including rotated GAV-style views.
-for (const [h,p] of [[0,0],[0.55,-0.3],[2,0.8]]) {
-  const draw=graph([cgaPointAt([0,0,0])],CGA,{conformal:true,h,p,z:8},true).draws[0];
+for (const upAxis of ['y','z']) for (const [h,p] of [[0,0],[0.55,-0.3],[2,0.8]]) {
+  const draw=graph([cgaPointAt([0,0,0])],CGA,{conformal:true,upAxis,h,p,z:8},true).draws[0];
   const origin=projected([0,0,0],draw);
   const renderedAxes=axes.map(axis=>projected(axis,draw).slice(0,3).map((v,i)=>(v-origin[i])*(i===2?-1:1)));
   assert.ok(determinant(...renderedAxes)>0, 'CGA projection must preserve handedness');
+  if(upAxis==='z') {
+    near([renderedAxes[2][0]],[0]);
+    assert.ok(renderedAxes[2][1]>0, 'Z stays vertically upward at every azimuth');
+  }
 }
+const zUp=graph([cgaPointAt([0,0,0])],CGA,{conformal:true,upAxis:'z',h:Math.PI/4,p:Math.PI/6,z:8},true);
+const mouseDown=button=>zUp.canvas.onmousedown({detail:1,button,x:0,y:0,preventDefault(){},stopPropagation(){}});
+mouseDown(0);
+zUp.canvas.onmousemove({movementX:30,movementY:10});
+zUp.canvas.update(zUp.canvas.value);
+let view=zUp.draws[zUp.draws.length-1];
+const afterOrbit=projected([0,0,1],view);
+near([afterOrbit[0]],[0]);
+assert.ok(afterOrbit[1]>0,'Z-up survives orbit dragging');
+const originBeforePan=projected([0,0,0],view);
+mouseDown(2);
+zUp.canvas.onmousemove({movementX:20,movementY:15});
+zUp.canvas.update(zUp.canvas.value);
+view=zUp.draws[zUp.draws.length-1];
+near(projected([0,0,0],view),[originBeforePan[0]+0.08,originBeforePan[1]-0.06,...originBeforePan.slice(2)]);
+const zGrid=graph([],CGA,{conformal:true,upAxis:'z',grid:true,h:Math.PI/4,p:Math.PI/6},true).draws[0];
+const hasGridVertex=v=>zGrid.vertices.some((_,i)=>i%3===0 && v.every((x,j)=>Math.abs(zGrid.vertices[i+j]-x)<1e-5));
+assert.ok(hasGridVertex([0,1,-1]),'Z-up XY grid lies on the floor');
+assert.ok(!hasGridVertex([0,1,1]),'Z-up XY grid does not form a ceiling');
+assert.ok(projected([0,0,-1],zGrid)[1]<projected([0,0,0],zGrid)[1],'grid floor projects below the origin');
 console.log('PGA/CGA coordinates, projection, dragging, GAV points, and motor orbits: pass');

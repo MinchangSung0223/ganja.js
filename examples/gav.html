@@ -36,9 +36,9 @@ GAViewer syntax test.
     <PRE CLASS="input"></PRE>    
   </DIV>
   <SCRIPT>
-  // Testing - simple 2D PGA to start.
+  // CGA viewer with a right-handed Z-up orbit camera.
     var A = Algebra(4,1);
-    var Graph = document.querySelector(".graph").appendChild(A.graph([],{gl:true,grid:true,conformal:true,z:8}));
+    var Graph = document.querySelector(".graph").appendChild(A.graph([],{gl:true,grid:true,conformal:true,upAxis:'z',h:Math.PI/4,p:Math.PI/6,z:8}));
     Object.assign(Graph.style,{width:'100%',height:'100%',position:'absolute'});
     
   // Testing simple collect parser that displays each command ..

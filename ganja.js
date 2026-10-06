@@ -1282,6 +1282,15 @@
       // Default modelview matrix, convert camera to matrix (biquaternion->matrix)
         var M=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,-5,1], mtx = (x)=>{ var t=options.spin?performance.now()*options.spin/1000:-options.h||0, t2=options.p||0;
           var ct = Math.cos(t), st= Math.sin(t), ct2 = Math.cos(t2), st2 = Math.sin(t2), xx=options.posx||0, y=options.posy||0, z=options.posz||0, zoom=options.z||5;
+          if (tot==5 && options.upAxis==='z') {
+            // Z-up orbit camera: h is azimuth about world Z, p is elevation.
+            // The rows are screen right, screen up, and toward the viewer;
+            // right cross up = toward, so this is a rotation, not a reflection.
+            const right=[st,ct,0], up=[-ct*st2,st*st2,ct2], toward=[ct*ct2,-st*ct2,st2];
+            const translation=row=>row[0]*xx+row[1]*y+row[2]*z;
+            return [right[0],up[0],toward[0],0,right[1],up[1],toward[1],0,right[2],up[2],toward[2],0,
+                    translation(right),translation(up),translation(toward)-zoom,1];
+          }
           if (tot==5) return [ct,st*-st2,st*ct2,0,0,ct2,st2,0,-st,ct*-st2,ct*ct2,0,xx*ct+z*-st,y*ct2+(xx*st+z*ct)*-st2,y*st2+xx*st+z*ct*ct2-zoom,1];
           x=x.Normalized; var y=x.Mul(x.Dual),X=x.e23,Y=-x.e13,Z=-x.e12,W=x.s;
           var xx = X*X, xy = X*Y, xz = X*Z, xw = X*W, yy = Y*Y, yz = Y*Z, yw = Y*W, zz = Z*Z, zw = Z*W;
@@ -1468,9 +1477,11 @@
         // Grid.
           if (options.grid) {
             const gr = options.gridSize||1;
+            // In Z-up views the XY grid is the floor, below the origin.
+            const gridZ = tot==5 && options.upAxis==='z' ? -gr : gr;
             if (!options.gridLines) { options.gridLines=[[],[],[]]; for (var i=-gr; i<=gr; i+=gr/10) {
                 options.gridLines[0].push(i,-gr,gr, i,-gr,-gr, gr,-gr,i, -gr,-gr,i); 
-                options.gridLines[1].push(i,gr,gr, i,-gr,gr, gr,i,gr, -gr,i,gr); 
+                options.gridLines[1].push(i,gr,gridZ, i,-gr,gridZ, gr,i,gridZ, -gr,i,gridZ);
                 options.gridLines[2].push(-gr,i,gr, -gr,i,-gr, -gr,gr,i, -gr,-gr,i);
             }}
             var ltest = [], ltest2 = [], ttest = []; for (var j=0; j<3; ++j) for (var i=0; i<options.gridLines[j].length; i+=6) {
@@ -1785,12 +1796,21 @@
           var tx,ty; canvas.ontouchstart = (e)=>{e.preventDefault();  canvas.focus(); var x = e.changedTouches[0].pageX, y = e.changedTouches[0].pageY; tx=x; ty=y; }
           canvas.ontouchmove = function (e) { e.preventDefault();
              var x = e.changedTouches[0].pageX, y = e.changedTouches[0].pageY, mx = (x-(tx||x))/1000, my = -(y-(ty||y))/1000; tx=x; ty=y;
+             if (tot==5 && options.upAxis==='z') { mx=-mx; my=-my; }
              options.h = (options.h||0)+mx; options.p = Math.max(-Math.PI/2,Math.min(Math.PI/2, (options.p||0)+my)); if (!options.animate) requestAnimationFrame(canvas.update.bind(canvas,f,options)); return;
           };
           canvas.onmousemove=(e)=>{
             var rc = canvas.getBoundingClientRect(),x; if (sel>=0) { if (tot==5) x=interprete(canvas.value[sel]); else x={pos:pgaPointToWorld(canvas.value[sel])}; }
             var mx =(e.movementX)/(rc.right-rc.left)*2, my=((e.movementY)/(rc.bottom-rc.top)*2)*canvas.height/canvas.width;
-            if (sel==-2) { options.h = (options.h||0)+(options.conformal?-1:1)*mx/2; options.p = Math.max(-Math.PI/2,Math.min(Math.PI/2, (options.p||0)-my/2)); if (options.camera) options.camera.set( ( Element.Bivector(0,0,0,0,0,options.p).Exp() ).Mul( Element.Bivector(0,0,0,0,options.h,0).Exp() )); if (!options.animate) requestAnimationFrame(canvas.update.bind(canvas,f,options)); return; };
+            if (sel==-2) { options.h = (options.h||0)+(options.conformal?-1:1)*mx/2; options.p = Math.max(-Math.PI/2,Math.min(Math.PI/2, (options.p||0)+(tot==5 && options.upAxis==='z'?1:-1)*my/2)); if (options.camera) options.camera.set( ( Element.Bivector(0,0,0,0,0,options.p).Exp() ).Mul( Element.Bivector(0,0,0,0,options.h,0).Exp() )); if (!options.animate) requestAnimationFrame(canvas.update.bind(canvas,f,options)); return; };
+            if (sel==-3 && tot==5 && options.upAxis==='z') {
+              const distance=-2*M[14]/5, dx=mx*distance, dy=-my*distance;
+              // Pan in the screen plane, with the same inverse view as point dragging.
+              options.posx=(options.posx||0)+M[0]*dx+M[1]*dy;
+              options.posy=(options.posy||0)+M[4]*dx+M[5]*dy;
+              options.posz=(options.posz||0)+M[8]*dx+M[9]*dy;
+              if (!options.animate) requestAnimationFrame(canvas.update.bind(canvas,f,options)); return;
+            }
             if (sel==-3) { var ct = Math.cos(options.h||0), st= Math.sin(options.h||0), ct2 = Math.cos(options.p||0), st2 = Math.sin(options.p||0);
               if (e.shiftKey) { options.posy = (options.posy||0)+my; } else { options.posx = (options.posx||0)+mx*ct+my*st; options.posz = (options.posz||0)+mx*-st+my*ct*ct2; } if (!options.animate) requestAnimationFrame(canvas.update.bind(canvas,f,options));return; }; if (sel < 0) return;
             if (x) {
